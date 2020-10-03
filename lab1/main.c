@@ -485,6 +485,7 @@ void insert_train(struct Train new_train) {
 }
 
 void insert_travel(int passenger_id, struct Travel new_travel) {
+    new_travel.next_travel_position = -1;
     new_travel.passenger_id = passenger_id;
     new_travel.exists = true;
     struct Passenger passenger = get_passenger(passenger_id);
@@ -508,6 +509,61 @@ void insert_travel(int passenger_id, struct Travel new_travel) {
         current.next_travel_position = position;
         update_travel_file(prev_position, current);
     }
+}
+
+int count_trains() {
+    FILE *train_data_file = fopen("../train.data", "rb");
+    struct Train train;
+    int result = 0;
+    while(fread(&train, sizeof(struct Train), 1, train_data_file)) {
+        if(train.exists) {
+            result++;
+        }
+    }
+    fclose(train_data_file);
+    return result;
+}
+
+int count_passengers() {
+    FILE *passenger_data_file = fopen("../passenger.data", "rb");
+    int result = 0;
+    struct Passenger passenger;
+    while(fread(&passenger, sizeof(struct Passenger), 1, passenger_data_file)) {
+        if(passenger.exists) {
+            result++;
+        }
+    }
+    fclose(passenger_data_file);
+    return result;
+}
+
+int count_travels() {
+    FILE *travel_data_file = fopen("../travel.data", "rb");
+    int result = 0;
+    struct Travel travel;
+    while(fread(&travel, sizeof(struct Travel), 1, travel_data_file)) {
+        if(travel.exists) {
+            result++;
+        }
+    }
+    fclose(travel_data_file);
+    return result;
+}
+
+int count_passenger_travels(int passenger_id) {
+    struct Passenger passenger = get_passenger(passenger_id);
+    int result = 0;
+    int position = passenger.first_travel_position;
+    struct Travel travel;
+    FILE *travel_data_file = fopen("../travel.data", "rb");
+    while(position != -1) {
+        result++;
+        fseek(travel_data_file, position * sizeof(struct Travel), SEEK_SET);
+        fread(&travel, sizeof(struct Travel), 1, travel_data_file);
+        position = travel.next_travel_position;
+    }
+    fclose(travel_data_file);
+    return result;
 }
 
 int main() {
@@ -569,5 +625,11 @@ int main() {
     insert_travel(4, travel);
 
     print_all_travels();
+
+    printf("\nCount:\n");
+    printf("count passengers = %d\n", count_passengers());
+    printf("count trains = %d\n", count_trains());
+    printf("count travels = %d\n", count_travels());
+    printf("count passenger travels = %d\n", count_passenger_travels(4));
     return 0;
 }
