@@ -41,6 +41,8 @@ struct Travel {
     char date[32];
     int next_travel_position;
     bool exists;
+    // helper value for get_travel works as get_travel_position also
+    int current_position;
 };
 
 bool check_position(int position, char who[]) {
@@ -115,12 +117,12 @@ void print_train_index(struct TrainIndex train_index) {
 }
 
 void print_train(struct Train train) {
-    printf ("Train: id = %3d | name = %8s | weight = %7d | power = %6d |\n",
+    printf ("Train: id = %3d | name = %9s | weight = %7d | power = %6d |\n",
             train.id, train.name, train.weight, train.power);
 }
 
 void print_passenger(struct Passenger passenger) {
-    printf ("Passenger: id = %3d | first_name = %7s | last_name = %7s | passport = %3s | age = %3d |\n",
+    printf ("Passenger: id = %3d | first_name = %8s | last_name = %8s | passport = %3s | age = %3d |\n",
             passenger.id, passenger.first_name, passenger.last_name, passenger.passport, passenger.age);
 }
 
@@ -254,6 +256,8 @@ struct Travel get_travel(int passenger_id, int travel_id) {
         struct Travel temp;
         while(fread(&temp, sizeof(struct Travel), 1, travel_file)) {
             if(temp.id == travel_id) {
+                // cheats here only for get_travel()
+                temp.current_position = ftell(travel_file) / sizeof(struct Travel) - 1;
                 return temp;
             }
             if(temp.next_travel_position != -1) {
@@ -329,6 +333,40 @@ void delete_passenger(int id) {
     update_passenger_file(passenger_position, passenger_to_delete);
 }
 
+void delete_travel(int passenger_id, int travel_id) {
+    struct Passenger passenger = get_passenger(passenger_id);
+    struct Travel travel_to_delete = get_travel(passenger_id, travel_id);
+    if (travel_to_delete.id != 0){
+        printf("%s", "Travel to delete: \n");
+        print_travel(travel_to_delete);
+        int position = passenger.first_travel_position;
+        FILE *travel_data_file = fopen("../travel.data", "rb");
+        struct Travel previous, current;
+        previous.id = -1;
+        int previous_position = 0;
+        fseek(travel_data_file, position * sizeof(struct Travel), SEEK_SET);
+        fread(&current, sizeof(struct Travel), 1 , travel_data_file);
+
+        while(current.id != travel_id) {
+            previous_position = position;
+            position = current.next_travel_position;
+            previous = current;
+            fseek(travel_data_file, position * sizeof(struct Travel), SEEK_SET);
+            fread(&current, sizeof(struct Travel), 1 , travel_data_file);
+        }
+        if(previous.id == -1) {
+            passenger.first_travel_position = -1;
+            update_passenger_file(find_train_position(passenger_id), passenger);
+        } else {
+            previous.next_travel_position = current.next_travel_position;
+            update_travel_file(previous_position, previous);
+        }
+        current.exists = false;
+        update_travel_file(position, current);
+        fclose(travel_data_file);
+    }
+}
+
 void update_train(int id, char name[], int weight, int power) {
     int position = find_train_position(id);
     if(check_position(position, "train")) {
@@ -352,6 +390,15 @@ void update_passenger(int id, char first_name[], char last_name[], char passport
     }
 }
 
+void update_travel(int passenger_id, int travel_id, char date[]) {
+    struct Travel travel = get_travel(passenger_id, travel_id);
+    int position = travel.current_position;
+    if(check_position(position, "travel")) {
+        strcpy(travel.date, date);
+        update_travel_file(position, travel);
+    }
+}
+
 void insert_passenger(struct Passenger new_passenger) {
     FILE *passenger_data_file = fopen("../passenger.data", "w+b");
     FILE *passenger_index_file = fopen("../passenger.index", "rb");
@@ -370,29 +417,39 @@ int main() {
     print_all_trains();
     print_all_passengers();
     print_all_travels();
-
-    printf("%s", "\nGet:\n");
-    print_train(get_train(2));
-    print_passenger(get_passenger(3));
-    print_travel(get_travel(3, 4));
-
-//    printf("%s", "\nUpdate:\n");
 //
-//    print_passenger(get_passenger(1));
-//    update_passenger(1, "Changed 1", "Last Changed 1", "Changed A", 20);
-//    print_passenger(get_passenger(1));
+//    printf("%s", "\nGet:\n");
+//    print_train(get_train(2));
+//    print_passenger(get_passenger(3));
+//    print_travel(get_travel(3, 4));
 //
-//    print_train(get_train(1));
-//    update_train(1, "Changed 2", 5000, 1000);
-//    print_train(get_train(1));
+//    printf("%s", "\nDelete:\n");
+//
+//    delete_train(2);
+//    print_all_trains();
+//
+//    delete_passenger(1);
+//    print_all_passengers();
+//    print_all_travels();
+//
+//    delete_travel(3, 3);
+//    print_all_travels();
 
-    printf("%s", "\nDelete:\n");
+    printf("%s", "\nUpdate:\n");
 
-    delete_train(2);
+    print_passenger(get_passenger(1));
+    update_passenger(1, "Change 1", "Change 1", "AC", 20);
+    print_passenger(get_passenger(1));
+
+    print_train(get_train(1));
+    update_train(1, "Changed 2", 5000, 1000);
+    print_train(get_train(1));
+
+    print_travel(get_travel(3, 2));
+    update_travel(3,2,"2012");
+    print_travel(get_travel(3, 2));
+
     print_all_trains();
-    print_all_travels();
-
-    delete_passenger(3);
     print_all_passengers();
     print_all_travels();
     return 0;
