@@ -35,7 +35,7 @@ count
 # 9
 update-passenger 6 Change-1 Change-1 AC 21
 update-train 2 ChangeT-1 12345 2112
-update-travel 580 6 580 1950
+update-travel 6 580 1950
 
 # 10
 get-all
