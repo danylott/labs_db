@@ -1,0 +1,41 @@
+# 1
+insert-passenger First-4 Last-4 E 28
+insert-passenger First-5 Last-5 F 17
+get-passenger-all
+
+# 2
+insert-travel 412 4 2 2011
+insert-travel 415 4 1 2012
+insert-travel 417 5 1 2015
+insert-travel 419 5 3 2017
+get-travel-all
+
+# 3
+get-all
+count-all
+
+# 4
+delete-passenger 4
+
+# 5
+delete-travel 3 3
+
+# 6
+get-all
+count-all
+
+# 7
+insert-passenger First-6 Last-6 G 40
+insert-travel 580 6 1 2010
+
+# 8
+get-all
+count
+
+# 9
+update-passenger 6 Change-1 Change-1 AC 21
+update-train 2 ChangeT-1 12345 2112
+update-travel 580 6 580 1950
+
+# 10
+get-all

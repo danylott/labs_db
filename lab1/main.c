@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -117,18 +118,22 @@ void print_train_index(struct TrainIndex train_index) {
 }
 
 void print_train(struct Train train) {
-    printf ("Train: id = %3d | name = %9s | weight = %7d | power = %6d |\n",
-            train.id, train.name, train.weight, train.power);
+    printf ("Train: id = %3d | name = %9s | weight = %7d | power = %6d | exists = %2d |\n",
+            train.id, train.name, train.weight, train.power, train.exists);
 }
 
 void print_passenger(struct Passenger passenger) {
-    printf ("Passenger: id = %3d | first_name = %8s | last_name = %8s | passport = %3s | age = %3d |\n",
-            passenger.id, passenger.first_name, passenger.last_name, passenger.passport, passenger.age);
+    printf ("Passenger: id = %2d | first = %8s | last = %8s |"
+            " passport = %2s | age = %3d | first_travel = %2d | exists = %2d |\n",
+            passenger.id, passenger.first_name, passenger.last_name,
+            passenger.passport, passenger.age, passenger.first_travel_position, passenger.exists);
 }
 
 void print_travel(struct Travel travel) {
-    printf("Travel: universal_code = %3d | train_id = %3d | passenger_id = %3d | date = %5s |\n",
-            travel.id, travel.train_id, travel.passenger_id, travel.date);
+    printf("Travel: universal_code = %3d | train_id = %3d |"
+           " passenger_id = %3d | date = %5s | next_travel = %3d | exists = %3d |\n",
+            travel.id, travel.train_id,
+            travel.passenger_id, travel.date, travel.next_travel_position, travel.exists);
 }
 
 void print_all_trains() {
@@ -136,9 +141,7 @@ void print_all_trains() {
     FILE *train_data_file = fopen("../train.data", "rb");
     struct Train train;
     while(fread(&train, sizeof(struct Train), 1, train_data_file)) {
-        if(train.exists) {
             print_train(train);
-        }
     }
     fclose(train_data_file);
 }
@@ -148,9 +151,7 @@ void print_all_passengers() {
     FILE *passenger_data_file = fopen("../passenger.data", "rb");
     struct Passenger passenger;
     while(fread(&passenger, sizeof(struct Passenger), 1, passenger_data_file)) {
-        if(passenger.exists) {
             print_passenger(passenger);
-        }
     }
     fclose(passenger_data_file);
 }
@@ -160,9 +161,7 @@ void print_all_travels() {
     FILE *travel_data_file = fopen("../travel.data", "rb");
     struct Travel travel;
     while(fread(&travel, sizeof(struct Travel), 1, travel_data_file)) {
-        if(travel.exists) {
             print_travel(travel);
-        }
     }
     fclose(travel_data_file);
 }
@@ -446,13 +445,16 @@ unsigned int insert_passenger_index(int position) {
     struct PassengerIndex previous_index;
     fseek(passenger_index_file, 0, SEEK_END);
     int last = ftell(passenger_index_file) / sizeof(struct PassengerIndex) - 1;
-    fseek(passenger_index_file, last * sizeof(struct PassengerIndex), SEEK_SET);
-    fread(&previous_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
-    struct PassengerIndex current_index = {previous_index.passenger_id + 1, position};
-    fseek(passenger_index_file, 0, SEEK_END);
-    fwrite(&current_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
-    fclose(passenger_index_file);
-    return previous_index.passenger_id + 1;
+    if(last >= 0) {
+        fseek(passenger_index_file, last * sizeof(struct PassengerIndex), SEEK_SET);
+        fread(&previous_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
+        struct PassengerIndex current_index = {previous_index.passenger_id + 1, position};
+        fseek(passenger_index_file, 0, SEEK_END);
+        fwrite(&current_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
+        fclose(passenger_index_file);
+        return previous_index.passenger_id + 1;
+    }
+    return 1;
 }
 
 unsigned int insert_train_index(int position) {
@@ -460,13 +462,16 @@ unsigned int insert_train_index(int position) {
     struct TrainIndex previous_index;
     fseek(train_index_file, 0, SEEK_END);
     int last = ftell(train_index_file) / sizeof(struct TrainIndex) - 1;
-    fseek(train_index_file, last * sizeof(struct TrainIndex), SEEK_SET);
-    fread(&previous_index, sizeof(struct TrainIndex), 1, train_index_file);
-    struct TrainIndex current_index = {previous_index.train_id + 1, position};
-    fseek(train_index_file, 0, SEEK_END);
-    fwrite(&current_index, sizeof(struct TrainIndex), 1, train_index_file);
-    fclose(train_index_file);
-    return previous_index.train_id + 1;
+    if(last >= 0) {
+        fseek(train_index_file, last * sizeof(struct TrainIndex), SEEK_SET);
+        fread(&previous_index, sizeof(struct TrainIndex), 1, train_index_file);
+        struct TrainIndex current_index = {previous_index.train_id + 1, position};
+        fseek(train_index_file, 0, SEEK_END);
+        fwrite(&current_index, sizeof(struct TrainIndex), 1, train_index_file);
+        fclose(train_index_file);
+        return previous_index.train_id + 1;
+    }
+    return 1;
 }
 
 void insert_passenger(struct Passenger new_passenger) {
@@ -505,9 +510,12 @@ void insert_travel(int passenger_id, struct Travel new_travel) {
             fseek(travel_data_file, current.next_travel_position * sizeof(struct Travel), SEEK_SET);
             fread(&current, sizeof(struct Travel), 1, travel_data_file);
         }
+        struct Travel temp;
+        fseek(travel_data_file, prev_position * sizeof(struct Travel), SEEK_SET);
+        fread(&temp, sizeof(struct Travel), 1, travel_data_file);
+        temp.next_travel_position = position;
+        update_travel_file(prev_position, temp);
         fclose(travel_data_file);
-        current.next_travel_position = position;
-        update_travel_file(prev_position, current);
     }
 }
 
@@ -566,70 +574,135 @@ int count_passenger_travels(int passenger_id) {
     return result;
 }
 
+void print_menu() {
+    printf("\nTrain System:\n");
+    printf("Enter one of the following commands:\n");
+    printf("\t\"get-all\" - get all tables\n");
+    printf("\t\"get-passenger id\" - get Passenger by id\n");
+    printf("\t\"get-passenger-all\" - get all Passengers\n");
+    printf("\t\"get-train id\" - get Train by id\n");
+    printf("\t\"get-train-all\" - get all Trains\n");
+    printf("\t\"get-travel passenger_id travel_id\" - get Travel by passenger_id and travel_id\n");
+    printf("\t\"get-travel-all\" - get all Travels\n");
+    printf("\t\"insert-passenger first_name last_name passport age\" - add new Passenger\n");
+    printf("\t\"insert-train name weight power\" - add new Train\n");
+    printf("\t\"insert-travel universal_code passenger_id train_id date\" - add new Travel\n");
+    printf("\t\"update-passenger id first_name last_name passport age\" - update Passenger\n");
+    printf("\t\"update-train id name weight power\" - update Train\n");
+    printf("\t\"update-travel passenger_id travel_id date\" - update Travel\n");
+    printf("\t\"delete-passenger id\" - delete Passenger (with connected Travels) by id\n");
+    printf("\t\"delete-train id\" - delete Train by id\n");
+    printf("\t\"delete-travel passenger_id travel_id\" - delete Travel by passenger_id travel_id\n");
+    printf("\t\"count\" - to count amount of data in each table\n");
+    printf("\t\"exit\" - to exit\n");
+}
+
+int to_int(char text[]) {
+    return (int) strtol(text, (char **)NULL, 10);
+}
+
+int handle_operation() {
+    char operation[200];
+    fgets(operation, 100, stdin);
+    char copy[200];
+    strcpy(copy, operation);
+
+    char* option = strtok(operation, " \n");
+    if (!strcmp(option, "insert-passenger")) {
+        char first_name[32], last_name[32], passport[32], age[32];
+        sscanf(copy, "%s %s %s %s %s", operation, first_name, last_name, passport, age);
+        struct Passenger passenger;
+        strcpy(passenger.first_name, first_name);
+        strcpy(passenger.last_name, last_name);
+        strcpy(passenger.passport, passport);
+        passenger.age = to_int(age);
+        insert_passenger(passenger);
+    } else if (!strcmp(option, "insert-train")) {
+        char name[32], weight[32], power[32];
+        sscanf(copy, "%s %s %s %s", operation, name, weight, power);
+        struct Train train;
+        strcpy(train.name, name);
+        train.weight = to_int(weight);
+        train.power = to_int(power);
+        insert_train(train);
+    } else if (!strcmp(option, "insert-travel")) {
+        char date[32], code[32], passenger_id[32], train_id[32];
+        sscanf(copy, "%s %s %s %s %s", operation, code, passenger_id, train_id, date);
+        struct Travel travel;
+        travel.id = to_int(code);
+        travel.passenger_id = to_int(passenger_id);
+        travel.train_id = to_int(train_id);
+        strcpy(travel.date, date);
+        insert_travel(to_int(passenger_id), travel);
+    } else if (!strcmp(option, "update-passenger")) {
+        char first_name[32], last_name[32], passport[32], age[32], id[32];
+        sscanf(copy, "%s %s %s %s %s %s", operation, id, first_name, last_name, passport, age);
+        update_passenger(to_int(id), first_name, last_name, passport, to_int(age));
+    } else if (!strcmp(option, "update-train")) {
+        char name[32], weight[32], power[32], id[32];
+        sscanf(copy, "%s %s %s %s %s", operation, id, name, weight, power);
+        update_train(to_int(id), name, to_int(weight), to_int(power));
+    } else if (!strcmp(option, "update-travel")) {
+        char date[32], code[32], passenger_id[32], travel_id[32];
+        sscanf(copy, "%s %s %s %s", operation, passenger_id, code, date);
+        update_travel(to_int(passenger_id), to_int(code), date);
+    } else if (!strcmp(option, "get-passenger")) {
+        char id[32];
+        sscanf(copy, "%s %s", operation, id);
+        print_passenger(get_passenger(to_int(id)));
+    } else if (!strcmp(option, "get-train")) {
+        char id[32];
+        sscanf(copy, "%s %s", operation, id);
+        print_train(get_train(to_int(id)));
+    } else if (!strcmp(option, "get-travel")) {
+        char passenger_id[32], travel_id[32];
+        sscanf(copy, "%s %s %s", operation, passenger_id, travel_id);
+        print_travel(get_travel(to_int(passenger_id), to_int(travel_id)));
+    } else if (!strcmp(option, "get-passenger-all")) {
+        print_all_passengers();
+    } else if (!strcmp(option, "get-train-all")) {
+        print_all_trains();
+    } else if (!strcmp(option, "get-travel-all")) {
+        print_all_travels();
+    } else if (!strcmp(option, "delete-passenger")) {
+        char id[32];
+        sscanf(copy, "%s %s", operation, id);
+        delete_passenger(to_int(id));
+    } else if (!strcmp(option, "delete-train")) {
+        char id[32];
+        sscanf(copy, "%s %s", operation, id);
+        delete_train(to_int(id));
+    } else if (!strcmp(option, "delete-travel")) {
+        char passenger_id[32], travel_id[32];
+        sscanf(copy, "%s %s %s", operation, passenger_id, travel_id);
+        delete_travel(to_int(passenger_id), to_int(travel_id));
+    } else if (!strcmp(option, "count-all")) {
+        printf("count passengers = %d\n", count_passengers());
+        printf("count trains = %d\n", count_trains());
+        printf("count travels = %d\n", count_travels());
+    } else if (!strcmp(option, "get-all")) {
+        print_all_passengers();
+        print_all_trains();
+        print_all_travels();
+    } else if (!strcmp(option, "exit")) {
+        return -1;
+    } else {
+        printf("\nInvalid command!\n");
+    }
+    return 0;
+}
+
 int main() {
+    printf("%d", CLEAR_GARBAGE);
     initial_data();
     print_all_trains();
     print_all_passengers();
     print_all_travels();
-
-//    printf("%s", "\nGet:\n");
-//    print_train(get_train(2));
-//    print_passenger(get_passenger(3));
-//    print_travel(get_travel(3, 4));
-//
-//    printf("%s", "\nDelete:\n");
-//
-//    delete_train(2);
-//    print_all_trains();
-//
-//    delete_passenger(1);
-//    print_all_passengers();
-//    print_all_travels();
-//
-//    delete_travel(3, 3);
-//    print_all_travels();
-
-//    printf("%s", "\nUpdate:\n");
-//
-//    print_passenger(get_passenger(1));
-//    update_passenger(1, "Change 1", "Change 1", "AC", 20);
-//    print_passenger(get_passenger(1));
-//
-//    print_train(get_train(1));
-//    update_train(1, "Changed 2", 5000, 1000);
-//    print_train(get_train(1));
-//
-//    print_travel(get_travel(3, 2));
-//    update_travel(3,2,"2012");
-//    print_travel(get_travel(3, 2));
-//
-//    print_all_trains();
-//    print_all_passengers();
-//    print_all_travels();
-
-    printf("%s", "\nInsert:\n");
-    struct Passenger passenger = {-1, "First 4", "Last 4",
-            "D", 21};
-    insert_passenger(passenger);
-    print_all_passengers();
-
-    struct Train train = {-1, "First 4", 7000, 1560};
-    insert_train(train);
-    print_all_trains();
-
-    struct Travel travel = {41, 5, -1, "2015"};
-    insert_travel(4, travel);
-
-    travel.id = 45;
-    strcpy(travel.date, "2017");
-    insert_travel(4, travel);
-
-    print_all_travels();
-
-    printf("\nCount:\n");
-    printf("count passengers = %d\n", count_passengers());
-    printf("count trains = %d\n", count_trains());
-    printf("count travels = %d\n", count_travels());
-    printf("count passenger travels = %d\n", count_passenger_travels(4));
+    print_menu();
+    while(true) {
+        if(handle_operation() == -1) {
+            break;
+        }
+    }
     return 0;
 }
