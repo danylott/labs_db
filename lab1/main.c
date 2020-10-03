@@ -78,8 +78,8 @@ void initial_data() {
 
     FILE *passenger_data_file = fopen("../passenger.data", "w+b");
     struct Passenger passenger1 = {1, "First 1", "Last 1", "A", 19, 0, true};
-    struct Passenger passenger2 = {2, "First 2", "Last 2", "B", 31, -1, true};
-    struct Passenger passenger3 = {3, "First 3", "Last 3", "C", 25, 1, true};
+    struct Passenger passenger2 = {2, "First 2", "Last 2", "C", 24, -1, true};
+    struct Passenger passenger3 = {3, "First 3", "Last 3", "B", 25, 1, true};
 
     fwrite(&passenger1, sizeof(struct Passenger), 1, passenger_data_file);
     fwrite(&passenger2, sizeof(struct Passenger), 1, passenger_data_file);
@@ -127,7 +127,7 @@ void print_passenger(struct Passenger passenger) {
 }
 
 void print_travel(struct Travel travel) {
-    printf("Travel: id = %3d | train_id = %3d | passenger_id = %3d | date = %5s |\n",
+    printf("Travel: universal_code = %3d | train_id = %3d | passenger_id = %3d | date = %5s |\n",
             travel.id, travel.train_id, travel.passenger_id, travel.date);
 }
 
@@ -399,25 +399,123 @@ void update_travel(int passenger_id, int travel_id, char date[]) {
     }
 }
 
-void insert_passenger(struct Passenger new_passenger) {
-    FILE *passenger_data_file = fopen("../passenger.data", "w+b");
-    FILE *passenger_index_file = fopen("../passenger.index", "rb");
-    fseek(passenger_data_file, 0, SEEK_END);
-    unsigned int position = ftell(passenger_data_file) / sizeof(struct Passenger);
-    fwrite(&new_passenger, sizeof(struct Passenger), 1, passenger_data_file);
-    struct PassengerIndex temp;
-    while(fread(&temp, sizeof(struct PassengerIndex), 1, passenger_index_file)) {
-        
-    }
+void append_passenger_file(struct Passenger passenger) {
+    FILE *passenger_data_file = fopen("../passenger.data", "ab+");
+    fwrite(&passenger, sizeof(struct Passenger), 1, passenger_data_file);
+    fclose(passenger_data_file);
 }
 
+void append_train_file(struct Train train) {
+    FILE *train_data_file = fopen("../train.data", "ab+");
+    fwrite(&train, sizeof(struct Train), 1, train_data_file);
+    fclose(train_data_file);
+}
+
+void append_travel_file(struct Travel travel) {
+    FILE *travel_data_file = fopen("../travel.data", "ab+");
+    fwrite(&travel, sizeof(struct Travel), 1, travel_data_file);
+    fclose(travel_data_file);
+}
+
+int get_last_passenger_position() {
+    FILE *passenger_data_file = fopen("../passenger.data", "rb");
+    fseek(passenger_data_file, 0, SEEK_END);
+    int position = ftell(passenger_data_file) / sizeof(struct Passenger);
+    fclose(passenger_data_file);
+    return position;
+}
+
+int get_last_train_position() {
+    FILE *train_data_file = fopen("../train.data", "rb");
+    fseek(train_data_file, 0, SEEK_END);
+    int position = ftell(train_data_file) / sizeof(struct Train);
+    fclose(train_data_file);
+    return position;
+}
+
+int get_last_travel_position() {
+    FILE *travel_data_file = fopen("../travel.data", "rb");
+    fseek(travel_data_file, 0, SEEK_END);
+    int position = ftell(travel_data_file) / sizeof(struct Travel);
+    fclose(travel_data_file);
+    return position;
+}
+
+unsigned int insert_passenger_index(int position) {
+    FILE *passenger_index_file = fopen("../passenger.index", "rb+");
+    struct PassengerIndex previous_index;
+    fseek(passenger_index_file, 0, SEEK_END);
+    int last = ftell(passenger_index_file) / sizeof(struct PassengerIndex) - 1;
+    fseek(passenger_index_file, last * sizeof(struct PassengerIndex), SEEK_SET);
+    fread(&previous_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
+    struct PassengerIndex current_index = {previous_index.passenger_id + 1, position};
+    fseek(passenger_index_file, 0, SEEK_END);
+    fwrite(&current_index, sizeof(struct PassengerIndex), 1, passenger_index_file);
+    fclose(passenger_index_file);
+    return previous_index.passenger_id + 1;
+}
+
+unsigned int insert_train_index(int position) {
+    FILE *train_index_file = fopen("../train.index", "rb+");
+    struct TrainIndex previous_index;
+    fseek(train_index_file, 0, SEEK_END);
+    int last = ftell(train_index_file) / sizeof(struct TrainIndex) - 1;
+    fseek(train_index_file, last * sizeof(struct TrainIndex), SEEK_SET);
+    fread(&previous_index, sizeof(struct TrainIndex), 1, train_index_file);
+    struct TrainIndex current_index = {previous_index.train_id + 1, position};
+    fseek(train_index_file, 0, SEEK_END);
+    fwrite(&current_index, sizeof(struct TrainIndex), 1, train_index_file);
+    fclose(train_index_file);
+    return previous_index.train_id + 1;
+}
+
+void insert_passenger(struct Passenger new_passenger) {
+    new_passenger.first_travel_position = -1;
+    new_passenger.exists = true;
+    int position = get_last_passenger_position();
+    new_passenger.id = insert_passenger_index(position);
+    append_passenger_file(new_passenger);
+}
+
+void insert_train(struct Train new_train) {
+    new_train.exists = true;
+    int position = get_last_train_position();
+    new_train.id = insert_train_index(position);
+    append_train_file(new_train);
+}
+
+void insert_travel(int passenger_id, struct Travel new_travel) {
+    new_travel.passenger_id = passenger_id;
+    new_travel.exists = true;
+    struct Passenger passenger = get_passenger(passenger_id);
+    int position = get_last_travel_position();
+    append_travel_file(new_travel);
+    if(passenger.first_travel_position == -1) {
+        passenger.first_travel_position = position;
+        update_passenger_file(find_passenger_position(passenger_id), passenger);
+    } else {
+        FILE *travel_data_file = fopen("../travel.data", "rb");
+        struct Travel current;
+        int prev_position = passenger.first_travel_position;
+        fseek(travel_data_file, position * sizeof(struct Travel), SEEK_SET);
+        fread(&current, sizeof(struct Travel), 1, travel_data_file);
+        while(current.next_travel_position != -1) {
+            prev_position = current.next_travel_position;
+            fseek(travel_data_file, current.next_travel_position * sizeof(struct Travel), SEEK_SET);
+            fread(&current, sizeof(struct Travel), 1, travel_data_file);
+        }
+        fclose(travel_data_file);
+        current.next_travel_position = position;
+        update_travel_file(prev_position, current);
+    }
+}
 
 int main() {
     initial_data();
     print_all_trains();
     print_all_passengers();
     print_all_travels();
-//
+
 //    printf("%s", "\nGet:\n");
 //    print_train(get_train(2));
 //    print_passenger(get_passenger(3));
@@ -435,22 +533,41 @@ int main() {
 //    delete_travel(3, 3);
 //    print_all_travels();
 
-    printf("%s", "\nUpdate:\n");
+//    printf("%s", "\nUpdate:\n");
+//
+//    print_passenger(get_passenger(1));
+//    update_passenger(1, "Change 1", "Change 1", "AC", 20);
+//    print_passenger(get_passenger(1));
+//
+//    print_train(get_train(1));
+//    update_train(1, "Changed 2", 5000, 1000);
+//    print_train(get_train(1));
+//
+//    print_travel(get_travel(3, 2));
+//    update_travel(3,2,"2012");
+//    print_travel(get_travel(3, 2));
+//
+//    print_all_trains();
+//    print_all_passengers();
+//    print_all_travels();
 
-    print_passenger(get_passenger(1));
-    update_passenger(1, "Change 1", "Change 1", "AC", 20);
-    print_passenger(get_passenger(1));
-
-    print_train(get_train(1));
-    update_train(1, "Changed 2", 5000, 1000);
-    print_train(get_train(1));
-
-    print_travel(get_travel(3, 2));
-    update_travel(3,2,"2012");
-    print_travel(get_travel(3, 2));
-
-    print_all_trains();
+    printf("%s", "\nInsert:\n");
+    struct Passenger passenger = {-1, "First 4", "Last 4",
+            "D", 21};
+    insert_passenger(passenger);
     print_all_passengers();
+
+    struct Train train = {-1, "First 4", 7000, 1560};
+    insert_train(train);
+    print_all_trains();
+
+    struct Travel travel = {41, 5, -1, "2015"};
+    insert_travel(4, travel);
+
+    travel.id = 45;
+    strcpy(travel.date, "2017");
+    insert_travel(4, travel);
+
     print_all_travels();
     return 0;
 }
